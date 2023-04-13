@@ -26,12 +26,14 @@ from pikepdf import (
 
 @pytest.fixture
 def graph(resources):
-    yield Pdf.open(resources / 'graph.pdf')
+    with Pdf.open(resources / 'graph.pdf') as pdf:
+        yield pdf
 
 
 @pytest.fixture
 def fourpages(resources):
-    yield Pdf.open(resources / 'fourpages.pdf')
+    with Pdf.open(resources / 'fourpages.pdf') as pdf:
+        yield pdf
 
 
 @pytest.fixture
@@ -158,6 +160,9 @@ def test_formx(graph, outpdf):
     assert bytes(formx_placed_name) in cs
     new_page.obj.Contents = graph.make_stream(cs)
     graph.save(outpdf)
+
+    assert formx_placed_name in new_page.form_xobjects
+    assert new_page.form_xobjects[formx_placed_name] == formx
 
 
 def test_fourpages_to_4up(fourpages, graph, outpdf):

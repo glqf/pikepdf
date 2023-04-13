@@ -34,6 +34,10 @@ if TYPE_CHECKING:  # pragma: no cover
 XMP_NS_DC = "http://purl.org/dc/elements/1.1/"
 XMP_NS_PDF = "http://ns.adobe.com/pdf/1.3/"
 XMP_NS_PDFA_ID = "http://www.aiim.org/pdfa/ns/id/"
+XMP_NS_PDFA_EXTENSION = "http://www.aiim.org/pdfa/ns/extension/"
+XMP_NS_PDFA_PROPERTY = "http://www.aiim.org/pdfa/ns/property#"
+XMP_NS_PDFA_SCHEMA = "http://www.aiim.org/pdfa/ns/schema#"
+XMP_NS_PDFUA_ID = "http://www.aiim.org/pdfua/ns/id/"
 XMP_NS_PDFX_ID = "http://www.npes.org/pdfx/ns/id/"
 XMP_NS_PHOTOSHOP = "http://ns.adobe.com/photoshop/1.0/"
 XMP_NS_PRISM = "http://prismstandard.org/namespaces/basic/1.0/"
@@ -49,6 +53,10 @@ DEFAULT_NAMESPACES: list[tuple[str, str]] = [
     (XMP_NS_DC, 'dc'),
     (XMP_NS_PDF, 'pdf'),
     (XMP_NS_PDFA_ID, 'pdfaid'),
+    (XMP_NS_PDFA_EXTENSION, 'pdfaExtension'),
+    (XMP_NS_PDFA_PROPERTY, 'pdfaProperty'),
+    (XMP_NS_PDFA_SCHEMA, 'pdfaSchema'),
+    (XMP_NS_PDFUA_ID, 'pdfuaid'),
     (XMP_NS_PDFX_ID, 'pdfxid'),
     (XMP_NS_PHOTOSHOP, 'photoshop'),
     (XMP_NS_PRISM, 'prism'),
@@ -58,6 +66,10 @@ DEFAULT_NAMESPACES: list[tuple[str, str]] = [
     (XMP_NS_XMP, 'xmp'),
     (XMP_NS_XMP_MM, 'xmpMM'),
     (XMP_NS_XMP_RIGHTS, 'xmpRights'),
+    ('http://crossref.org/crossmark/1.0/', 'crossmark'),
+    ('http://www.niso.org/schemas/jav/1.0/', 'jav'),
+    ('http://ns.adobe.com/pdfx/1.3/', 'pdfx'),
+    ('http://www.niso.org/schemas/ali/1.0/', 'ali'),
 ]
 
 for _uri, _prefix in DEFAULT_NAMESPACES:
@@ -268,7 +280,7 @@ class DateConverter(Converter):
         try:
             dateobj = datetime.fromisoformat(xmp_val)
         except IndexError:
-            # PyPy 3.7 may raise IndexError - convert to ValueError
+            # PyPy 3.8 may raise IndexError - convert to ValueError
             raise ValueError(f"Invalid isoformat string: '{xmp_val}'") from None
         return encode_pdf_date(dateobj)
 
@@ -320,7 +332,6 @@ class PdfMetadata(MutableMapping):
     To update metadata, use a with block.
 
     Example:
-
         >>> with pdf.open_metadata() as records:
                 records['dc:title'] = 'New Title'
 
@@ -350,6 +361,18 @@ class PdfMetadata(MutableMapping):
     ]
     _PARSERS_STANDARD: Iterable[Callable[[bytes], Any]] = [_parser_basic]
 
+    @classmethod
+    def register_xml_namespace(cls, uri, prefix):
+        """Register a new XML/XMP namespace.
+
+        Arguments:
+            uri: The long form of the namespace.
+            prefix: The alias to use when interpreting XMP.
+        """
+        cls.NS[prefix] = uri
+        cls.REVERSE_NS[uri] = prefix
+        etree.register_namespace(_prefix, _uri)
+
     def __init__(
         self,
         pdf: Pdf,
@@ -357,6 +380,7 @@ class PdfMetadata(MutableMapping):
         sync_docinfo: bool = True,
         overwrite_invalid_xml: bool = True,
     ):
+        """Construct PdfMetadata. Use Pdf.open_metadata() instead."""
         self._pdf = pdf
         self._xmp = None
         self.mark = pikepdf_mark
@@ -468,10 +492,12 @@ class PdfMetadata(MutableMapping):
 
     @ensure_loaded
     def __enter__(self):
+        """Open metadata for editing."""
         self._updating = True
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        """Close metadata and apply changes."""
         try:
             if exc_type is not None:
                 return
@@ -667,10 +693,12 @@ class PdfMetadata(MutableMapping):
 
     @ensure_loaded
     def __contains__(self, key: str | QName):
+        """Test if XMP key is in metadata."""
         return any(self._get_element_values(key))
 
     @ensure_loaded
     def __getitem__(self, key: str | QName):
+        """Retrieve XMP metadata for key."""
         try:
             return next(self._get_element_values(key))
         except StopIteration:
@@ -678,6 +706,7 @@ class PdfMetadata(MutableMapping):
 
     @ensure_loaded
     def __iter__(self):
+        """Iterate through XMP metadata attributes and nodes."""
         for node, attrib, _val, _parents in self._get_elements():
             if attrib:
                 yield attrib
@@ -686,6 +715,7 @@ class PdfMetadata(MutableMapping):
 
     @ensure_loaded
     def __len__(self):
+        """Return number of items in metadata."""
         return len(list(iter(self)))
 
     def _setitem(
@@ -793,10 +823,12 @@ class PdfMetadata(MutableMapping):
 
     @ensure_loaded
     def __setitem__(self, key: str | QName, val: set[str] | list[str] | str):
+        """Set XMP metadata key to value."""
         return self._setitem(key, val, False)
 
     @ensure_loaded
     def __delitem__(self, key: str | QName):
+        """Delete item from XMP metadata."""
         if not self._updating:
             raise RuntimeError("Metadata not opened for editing, use with block")
         try:
@@ -863,4 +895,5 @@ class PdfMetadata(MutableMapping):
 
     @ensure_loaded
     def __str__(self):
+        """Convert XMP metadata to XML string."""
         return self._get_xml_bytes(xpacket=False).decode('utf-8')

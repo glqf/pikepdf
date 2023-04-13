@@ -64,7 +64,7 @@ void init_embeddedfiles(py::module_ &m)
                     shown in PDF viewers.
                 filename: Filename to display in PDF viewers.
                 mime_type: Helps PDF viewers decide how to display the information.
-                creation_date: PDF date string for when this file was creation.
+                creation_date: PDF date string for when this file was created.
                 mod_date: PDF date string for when this file was last modified.
             )~~~")
         .def_property("description",
@@ -157,7 +157,9 @@ void init_embeddedfiles(py::module_ &m)
     py::class_<QPDFEmbeddedFileDocumentHelper>(m, "Attachments")
         .def_property_readonly(
             "_has_embedded_files", &QPDFEmbeddedFileDocumentHelper::hasEmbeddedFiles)
-        .def("_get_all_filespecs", &QPDFEmbeddedFileDocumentHelper::getEmbeddedFiles)
+        .def("_get_all_filespecs",
+            &QPDFEmbeddedFileDocumentHelper::getEmbeddedFiles,
+            py::return_value_policy::reference_internal)
         .def("_get_filespec",
             &QPDFEmbeddedFileDocumentHelper::getEmbeddedFile,
             py::return_value_policy::reference_internal)

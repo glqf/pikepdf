@@ -35,12 +35,12 @@ from pikepdf import (
     Stream,
     String,
 )
-from pikepdf import _qpdf as qpdf
+from pikepdf import _core as core
 from pikepdf.models import parse_content_stream
 
 # pylint: disable=eval-used, redefined-outer-name
 
-encode = qpdf._encode
+encode = core._encode
 
 
 def test_none():
@@ -124,8 +124,8 @@ def test_decimal_from_float(f):
 
 
 def test_qpdf_real_to_decimal():
-    assert isclose(qpdf._new_real(1.2345, 4), Decimal('1.2345'), abs_tol=1e-5)
-    assert isclose(qpdf._new_real('2.3456'), Decimal('2.3456'), abs_tol=1e-5)
+    assert isclose(core._new_real(1.2345, 4), Decimal('1.2345'), abs_tol=1e-5)
+    assert isclose(core._new_real('2.3456'), Decimal('2.3456'), abs_tol=1e-5)
 
 
 @skip_if_pypy
@@ -336,76 +336,6 @@ def test_not_constructible():
         Object()
 
 
-class TestRepr:
-    def test_repr_dict(self):
-        d = Dictionary(
-            {
-                '/Boolean': True,
-                '/Integer': 42,
-                '/Real': Decimal('42.42'),
-                '/String': String('hi'),
-                '/Array': Array([1, 2, 3.14]),
-                '/Operator': Operator('q'),
-                '/Dictionary': Dictionary({'/Color': 'Red'}),
-                '/None': None,
-            }
-        )
-        short_pi = '3.14'
-        expected = (
-            """\
-            pikepdf.Dictionary({
-                "/Array": [ 1, 2, Decimal('%s') ],
-                "/Boolean": True,
-                "/Dictionary": {
-                    "/Color": "Red"
-                },
-                "/Integer": 42,
-                "/None": None,
-                "/Operator": pikepdf.Operator("q"),
-                "/Real": Decimal('42.42'),
-                "/String": "hi"
-            })
-        """
-            % short_pi
-        )
-
-        def strip_all_whitespace(s):
-            return ''.join(s.split())
-
-        assert strip_all_whitespace(repr(d)) == strip_all_whitespace(expected)
-        assert eval(repr(d)) == d
-
-    def test_repr_scalar(self):
-        scalars = [
-            False,
-            666,
-            Decimal('3.14'),
-            String('scalar'),
-            Name('/Bob'),
-            Operator('Q'),
-        ]
-        for s in scalars:
-            assert eval(repr(s)) == s
-
-    def test_repr_indirect(self, resources):
-        with pikepdf.open(resources / 'graph.pdf') as graph:
-            repr_page0 = repr(graph.pages[0])
-            assert repr_page0[0] == '<', 'should not be constructible'
-
-    def test_repr_circular(self):
-        with pikepdf.new() as pdf:
-            pdf.Root.Circular = pdf.make_indirect(Dictionary())
-            pdf.Root.Circular.Parent = pdf.make_indirect(Dictionary())
-            pdf.Root.Circular.Parent = pdf.make_indirect(pdf.Root.Circular)
-            assert '.get_object' in repr(pdf.Root.Circular)
-
-    def test_repr_indirect_page(self, resources):
-        with pikepdf.open(resources / 'outlines.pdf') as outlines:
-            assert 'from_objgen' in repr(outlines.Root.Pages.Kids)
-            # An indirect page reference in the Dests name tree
-            assert 'from_objgen' in repr(outlines.Root.Names.Dests.Kids[0].Names[1])
-
-
 def test_operator_inline(resources):
     with pikepdf.open(resources / 'image-mono-inline.pdf') as pdf:
         instructions = parse_content_stream(pdf.pages[0], operators='BI ID EI')
@@ -453,9 +383,8 @@ class TestDictionary:
             pass
 
     def test_str(self):
-        d = pikepdf.Dictionary(A='a')
-        with pytest.raises(NotImplementedError):
-            str(d)
+        d = pikepdf.Dictionary(ABCD='abcd')
+        assert 'ABCD' in str(d)
 
     def test_attr(self):
         d = pikepdf.Dictionary(A='a')
@@ -551,10 +480,10 @@ def test_json():
 class TestStream:
     @pytest.fixture(scope="function")
     def abcxyz_stream(self):
-        pdf = pikepdf.new()
-        data = b'abcxyz'
-        stream = Stream(pdf, data)
-        return stream
+        with pikepdf.new() as pdf:
+            data = b'abcxyz'
+            stream = Stream(pdf, data)
+            yield stream
 
     def test_stream_isinstance(self):
         pdf = pikepdf.new()
@@ -662,8 +591,8 @@ def sandwich(resources):
 class TestStreamReadWrite:
     @pytest.fixture
     def stream_object(self):
-        pdf = pikepdf.new()
-        return Stream(pdf, b'abc123xyz')
+        with pikepdf.new() as pdf:
+            yield Stream(pdf, b'abc123xyz')
 
     def test_basic(self, stream_object):
         stream_object.write(b'abc')

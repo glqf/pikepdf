@@ -301,8 +301,9 @@ void init_object(py::module_ &m)
     py::bind_vector<ObjectList>(m, "_ObjectList") // Autoformat fix
         .def("__repr__", [](ObjectList &ol) {
             std::ostringstream ss;
+            ss.imbue(std::locale::classic());
             bool first = true;
-            ss << "pikepdf._qpdf._ObjectList([";
+            ss << "pikepdf._core._ObjectList([";
             for (auto &h : ol) {
                 if (first) {
                     first = false;
@@ -322,8 +323,8 @@ void init_object(py::module_ &m)
         .def_property_readonly("_type_name", &QPDFObjectHandle::getTypeName)
         .def(
             "is_owned_by",
-            [](QPDFObjectHandle &h, std::shared_ptr<QPDF> possible_owner) {
-                return (h.getOwningQPDF() == possible_owner.get());
+            [](QPDFObjectHandle &h, QPDF &possible_owner) {
+                return (h.getOwningQPDF() == &possible_owner);
             },
             "Test if this object is owned by the indicated *possible_owner*.",
             py::arg("possible_owner"))
@@ -437,7 +438,12 @@ void init_object(py::module_ &m)
                 return py::bool_(result);
             },
             py::is_operator())
-        .def("__copy__", [](QPDFObjectHandle &h) { return h.shallowCopy(); })
+        .def("__copy__",
+            [](QPDFObjectHandle &h) {
+                if (h.isStream())
+                    return h.copyStream();
+                return h.shallowCopy();
+            })
         .def("__len__",
             [](QPDFObjectHandle &h) -> py::size_t {
                 if (h.isDictionary()) {
@@ -576,8 +582,7 @@ void init_object(py::module_ &m)
             "For ``pikepdf.Dictionary`` or ``pikepdf.Stream`` objects, behave as "
             "``dict.get(key, default=None)``",
             py::arg("key"),
-            py::arg("default") = py::none(),
-            py::return_value_policy::reference_internal)
+            py::arg("default") = py::none())
         .def(
             "get",
             [](QPDFObjectHandle &h, QPDFObjectHandle &name, py::object default_) {
@@ -592,8 +597,7 @@ void init_object(py::module_ &m)
             "For ``pikepdf.Dictionary`` or ``pikepdf.Stream`` objects, behave as "
             "``dict.get(key, default=None)``",
             py::arg("key"),
-            py::arg("default") = py::none(),
-            py::return_value_policy::reference_internal)
+            py::arg("default") = py::none())
         .def(
             "keys",
             [](QPDFObjectHandle &h) {
@@ -668,7 +672,8 @@ void init_object(py::module_ &m)
                     return h.getOperatorValue();
                 else if (h.isString())
                     return h.getUTF8Value();
-                throw py::notimpl_error("don't know how to __str__ this object");
+                // Python's default __str__ calls __repr__
+                return objecthandle_repr(h);
             })
         .def("__bytes__",
             [](QPDFObjectHandle &h) {
@@ -856,7 +861,7 @@ void init_object(py::module_ &m)
             Convert to a QPDF JSON representation of the object.
 
             See the QPDF manual for a description of its JSON representation.
-            http://qpdf.sourceforge.net/files/qpdf-manual.html#ref.json
+            https://qpdf.readthedocs.io/en/stable/json.html#qpdf-json-format
 
             Not necessarily compatible with other PDF-JSON representations that
             exist in the wild.
@@ -872,7 +877,7 @@ void init_object(py::module_ &m)
               representable and will be serialized as ``null``.
 
             Args:
-                dereference (bool): If True, dereference the object is this is an
+                dereference (bool): If True, dereference the object if this is an
                     indirect object.
                 schema_version (int): The version of the JSON schema. Defaults to 2.
 
@@ -987,6 +992,11 @@ void init_object(py::module_ &m)
                 Called at the end of a content stream.
             )~~~");
 
+    // Since QPDFEmbeddedFileDocumentHelper::getEmbeddedFiles returns
+    // std::map<std::string, std::shared_ptr<QPDFFileSpecObjectHelper>>
+    // we must ensure that the entire QPDFObjectHelper type hierarchy is held in
+    // std::shared_ptr or repackage that interface so it does not return a
+    // std::shared_ptr<QPDFFileSpecObjectHelper>> to Python.
     py::class_<QPDFObjectHelper, std::shared_ptr<QPDFObjectHelper>>(m,
         "ObjectHelper",
         R"~~~(

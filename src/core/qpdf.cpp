@@ -142,7 +142,6 @@ std::shared_ptr<QPDF> open_pdf(py::object filename_or_stream,
         python_warning(
             "A password was provided, but no password was needed to open this PDF.");
     }
-    q->getLogger()->info("Opened a file");
 
     return q;
 }
@@ -530,7 +529,18 @@ void init_qpdf(py::module_ &m)
                 qpdf_basic_settings(*q);
                 return q;
             },
-            "Create a new empty PDF from scratch.")
+            R"~~~(
+            Create a new, empty PDF.
+
+            This is best when you are constructing a PDF from scratch.
+
+            In most cases, if you are working from an existing PDF, you should open the
+            PDF using :meth:`pikepdf.Pdf.open` and transform it, instead of a creating
+            a new one, to preserve metadata and structural information. For example,
+            if you want to split a PDF into two parts, you should open the PDF and
+            transform it into the desired parts, rather than creating a new PDF and
+            copying pages into it.
+            )~~~")
         .def_static("_open",
             open_pdf,
             py::arg("filename_or_stream"),
@@ -572,7 +582,7 @@ void init_qpdf(py::module_ &m)
             Returns the list of pages.
 
             Return type:
-                pikepdf._qpdf.PageList
+                pikepdf._core.PageList
             )~~~",
             py::return_value_policy::reference_internal)
         .def_property_readonly("_pages", &QPDF::getAllPages)
@@ -705,7 +715,6 @@ void init_qpdf(py::module_ &m)
             Return type:
                 pikepdf.Object
             )~~~",
-            py::return_value_policy::reference_internal, // LCOV_EXCL_LINE
             py::arg("objgen"))
         .def(
             "get_object",
@@ -716,7 +725,6 @@ void init_qpdf(py::module_ &m)
             Return type:
                 pikepdf.Object
             )~~~",
-            py::return_value_policy::reference_internal,
             py::arg("objid"),
             py::arg("gen"))
         .def_property_readonly(
@@ -729,7 +737,7 @@ void init_qpdf(py::module_ &m)
             to that page, such as images on the page, may still be present.
 
             Return type:
-                pikepdf._qpdf._ObjectList
+                pikepdf._core._ObjectList
             )~~~",
             py::return_value_policy::reference_internal)
         .def("make_indirect",
@@ -801,7 +809,6 @@ void init_qpdf(py::module_ &m)
             .. versionchanged:: 2.1
                 Error messages improved.
             )~~~",
-            py::return_value_policy::reference_internal,
             py::arg("h"))
         .def("copy_foreign",
             [](QPDF &q, QPDFPageObjectHelper &poh) -> QPDFPageObjectHelper {
@@ -986,6 +993,6 @@ void init_qpdf(py::module_ &m)
             these objects by filename.
 
             Returns:
-                pikepdf._qpdf.Attachments
+                pikepdf._core.Attachments
             )~~~");
 }

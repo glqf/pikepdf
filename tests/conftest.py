@@ -18,11 +18,6 @@ except ImportError:
 
 import pytest
 
-if sys.version_info < (3, 7):
-    print("Requires Python 3.7+")
-    sys.exit(1)
-
-
 TESTS_ROOT = os.path.abspath(os.path.dirname(__file__))
 PROJECT_ROOT = os.path.dirname(TESTS_ROOT)
 
@@ -49,6 +44,9 @@ def refcount():
     return sys.getrefcount
 
 
+skip_if_slow_cpu = pytest.mark.skipif(
+    platform.processor() != 'x86_64', reason="test too slow for rasppi arm"
+)
 skip_if_pypy = pytest.mark.skipif(
     platform.python_implementation() == 'PyPy', reason="test isn't valid for PyPy"
 )

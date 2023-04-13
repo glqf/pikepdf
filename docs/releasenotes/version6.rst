@@ -1,3 +1,48 @@
+v6.2.9
+======
+
+- Redo v6.2.8 to avoid confusion around v6.2.8 and its post releases. The release of v6.2.8 was botched by unexpected
+failures third party packages and hitting the 10 GB storage limit on PyPI.
+
+v6.2.8
+======
+
+- Rebuild binary wheels to improve support for Windows 32-bit.
+- Drop PyPy3.7 from wheel builds, since dependencies (lxml, Pillow) no longer provide it.
+
+v6.2.7
+======
+
+- Fixed some tests that randomly failed on Windows due to newline handling issues.
+
+v6.2.6
+======
+
+- Rebuild binary wheels for certain platforms they were blocked from release by lxml not releasing compatible wheels.
+Mainly to take advantage of Windows 64-bit.
+
+v6.2.5
+======
+
+- Rebuild binary wheels using qpdf 11.2.0.
+
+v6.2.4
+======
+
+- Removed a debug message during mmap.
+
+v6.2.3
+======
+
+- Fixed errors when using AccessMode.mmap. Thanks @zachgoulet.
+
+v6.2.2
+======
+
+- Fixed noisy log message.
+- Made some flakey tests less flakey.
+- Fixed deprecated information in setup.cfg. Thanks @mgorny.
+
 v6.2.1
 ======
 

@@ -56,6 +56,7 @@ void init_page(py::module_ &m)
         .def(
             "__copy__", [](QPDFPageObjectHelper &poh) { return poh.shallowCopyPage(); })
         .def_property_readonly("_images", &QPDFPageObjectHelper::getImages)
+        .def_property_readonly("_form_xobjects", &QPDFPageObjectHelper::getFormXObjects)
         .def("_get_mediabox", &QPDFPageObjectHelper::getMediaBox)
         .def("_get_cropbox", &QPDFPageObjectHelper::getCropBox)
         .def("_get_trimbox", &QPDFPageObjectHelper::getTrimBox)
@@ -182,7 +183,7 @@ void init_page(py::module_ &m)
             R"~~~(
                 Generate content stream segment to place a Form XObject on this page.
 
-                The content stream segment must be then be added to the page's
+                The content stream segment must then be added to the page's
                 content stream.
 
                 The default keyword parameters will preserve the aspect ratio.
@@ -239,6 +240,8 @@ void init_page(py::module_ &m)
                 // TokenFilters may be processed after the Python objects have gone
                 // out of scope, so we need to keep them alive by attaching them to
                 // the corresponding QPDF object.
+                // Standard py::keep_alive<> won't cut it. We could make this
+                // function require a Pdf, or move it to the Pdf.
                 auto pyqpdf = py::cast(poh.getObjectHandle().getOwningQPDF());
                 auto pytf   = py::cast(tf);
                 py::detail::keep_alive_impl(pyqpdf, pytf);

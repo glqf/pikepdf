@@ -164,8 +164,10 @@ def fix_1bit_palette_image(
     im = im.convert('P')
     if base_mode == 'RGB' and len(palette) == 6:
         # rgbrgb -> rgb000000...rgb
-        palette = palette[0:3] + (b'\x00\x00\x00' * (256 - 2)) + palette[3:6]
-        im.putpalette(palette, rawmode='RGB')
+        expanded_palette = b''.join(
+            [palette[0:3], (b'\x00\x00\x00' * (256 - 2)), palette[3:6]]
+        )
+        im.putpalette(expanded_palette, rawmode='RGB')
     elif base_mode == 'L':
         try:
             im.putpalette(palette, rawmode='L')
@@ -180,6 +182,7 @@ def generate_ccitt_header(
     size: tuple[int, int],
     data_length: int,
     ccitt_group: int,
+    t4_options: int | None,
     photometry: int,
     icc: bytes,
 ) -> bytes:
@@ -215,6 +218,8 @@ def generate_ccitt_header(
     add_ifd('ImageLength', height)
     add_ifd('BitsPerSample', 1)
     add_ifd('Compression', ccitt_group)
+    if t4_options is not None:
+        add_ifd('T4Options', t4_options)
     add_ifd('PhotometricInterpretation', int(photometry))
     add_ifd('StripOffsets', lambda: image_offset)
     add_ifd('RowsPerStrip', height)

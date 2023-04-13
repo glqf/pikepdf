@@ -1,9 +1,7 @@
 # SPDX-FileCopyrightText: 2022 James R. Barlow
 # SPDX-License-Identifier: CC0-1.0
 
-"""
-Testing focused on pikepdf.Pdf
-"""
+"""Testing focused on pikepdf.Pdf."""
 
 from __future__ import annotations
 
@@ -30,7 +28,7 @@ from pikepdf._exceptions import DependencyError
 @pytest.fixture
 def trivial(resources):
     with Pdf.open(
-        resources / 'pal-1bit-trivial.pdf'  # , access_mode=pikepdf.AccessMode.mmap
+        resources / 'pal-1bit-trivial.pdf', access_mode=pikepdf.AccessMode.mmap
     ) as pdf:
         yield pdf
 
@@ -398,11 +396,11 @@ def test_flate_compression_level():
 
 
 def test_set_access_default_mmap():
-    initial = pikepdf._qpdf.get_access_default_mmap()
+    initial = pikepdf._core.get_access_default_mmap()
     try:
-        pikepdf._qpdf.set_access_default_mmap(True)
+        pikepdf._core.set_access_default_mmap(True)
     finally:
-        pikepdf._qpdf.set_access_default_mmap(initial)
+        pikepdf._core.set_access_default_mmap(initial)
 
 
 def test_generate_appearance_streams(pdf_form):
@@ -419,7 +417,6 @@ def test_generate_appearance_streams(pdf_form):
     [('all', None), ('print', None), ('screen', None), ('', None), ('42', ValueError)],
 )
 def test_flatten_annotations_parameters(pdf_form, mode, exc):
-
     if exc is not None:
         error_ctx = pytest.raises(exc)
     else:
@@ -429,3 +426,9 @@ def test_flatten_annotations_parameters(pdf_form, mode, exc):
             pdf_form.flatten_annotations()
         else:
             pdf_form.flatten_annotations(mode)
+
+
+def test_refcount_chaining(resources):
+    # Ensure we can chain without crashing when Pdf is not properly opened or
+    # assigned a name
+    Pdf.open(resources / 'pal-1bit-trivial.pdf').pages[0]

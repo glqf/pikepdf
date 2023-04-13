@@ -10,7 +10,7 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 import pytest
-from conftest import skip_if_pypy
+from conftest import skip_if_pypy, skip_if_slow_cpu
 from hypothesis import assume, example, given, settings
 from hypothesis import strategies as st
 from hypothesis.strategies import integers
@@ -607,6 +607,7 @@ def test_random_docinfo(docinfo):
     )
 )
 @skip_if_pypy
+@skip_if_slow_cpu
 def test_random_valid_docinfo(docinfo):
     p = pikepdf.new()
     with p.open_metadata() as m:
@@ -736,3 +737,10 @@ def test_xxe(trivial, outdir):
 
 def test_qname_no_namespace():
     assert PdfMetadata._qname('abc') == '{adobe:ns:meta/}abc'
+
+
+def test_register_xmlns():
+    PdfMetadata.register_xml_namespace('http://github.com/pikepdf/pikepdf/', 'pikepdf')
+    assert (
+        PdfMetadata._qname('pikepdf:foo') == '{http://github.com/pikepdf/pikepdf/}foo'
+    )

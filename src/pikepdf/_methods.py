@@ -26,7 +26,7 @@ from warnings import warn
 
 from . import Array, Dictionary, Name, Object, Page, Pdf, Stream
 from ._augments import augment_override_cpp, augments
-from ._qpdf import (
+from ._core import (
     AccessMode,
     AttachedFile,
     AttachedFileSpec,
@@ -175,8 +175,7 @@ class Extend_Object:
         decode_parms: Dictionary | Array | None = None,
         type_check: bool = True,
     ):  # pylint: disable=redefined-builtin
-        """
-        Replace stream object's data with new (possibly compressed) `data`.
+        """Replace stream object's data with new (possibly compressed) `data`.
 
         `filter` and `decode_parms` describe any compression that is already
         present on the input `data`. For example, if your data is already
@@ -220,10 +219,10 @@ class Extend_Pdf:
     def _repr_mimebundle_(
         self, include=None, exclude=None
     ):  # pylint: disable=unused-argument
-        """
-        Present options to IPython or Jupyter for rich display of this object.
+        """Present options to IPython or Jupyter for rich display of this object.
 
-        See https://ipython.readthedocs.io/en/stable/config/integrating.html#rich-display
+        See:
+        https://ipython.readthedocs.io/en/stable/config/integrating.html#rich-display
         """
         bio = BytesIO()
         self.save(bio)
@@ -234,8 +233,7 @@ class Extend_Pdf:
 
     @property
     def docinfo(self) -> Dictionary:
-        """
-        Access the (deprecated) document information dictionary.
+        """Access the (deprecated) document information dictionary.
 
         The document information dictionary is a brief metadata record that can
         store some information about the origin of a PDF. It is deprecated and
@@ -283,8 +281,7 @@ class Extend_Pdf:
         update_docinfo: bool = True,
         strict: bool = False,
     ) -> PdfMetadata:
-        """
-        Open the PDF's XMP metadata for editing.
+        """Open the PDF's XMP metadata for editing.
 
         There is no ``.close()`` function on the metadata object, since this is
         intended to be used inside a ``with`` block only.
@@ -331,8 +328,7 @@ class Extend_Pdf:
         )
 
     def open_outline(self, max_depth: int = 15, strict: bool = False) -> Outline:
-        """
-        Open the PDF outline ("bookmarks") for editing.
+        """Open the PDF outline ("bookmarks") for editing.
 
         Recommend for use in a ``with`` block. Changes are committed to the
         PDF when the block exits. (The ``Pdf`` must still be opened.)
@@ -362,8 +358,7 @@ class Extend_Pdf:
         return Outline(self, max_depth=max_depth, strict=strict)
 
     def make_stream(self, data: bytes, d=None, **kwargs) -> Stream:
-        """
-        Create a new pikepdf.Stream object that is attached to this PDF.
+        """Create a new pikepdf.Stream object that is attached to this PDF.
 
         See:
             :meth:`pikepdf.Stream.__new__`
@@ -374,8 +369,7 @@ class Extend_Pdf:
     def add_blank_page(
         self, *, page_size: tuple[Numeric, Numeric] = (612.0, 792.0)
     ) -> Page:
-        """
-        Add a blank page to this PDF.
+        """Add a blank page to this PDF.
 
         If pages already exist, the page will be added to the end. Pages may be
         reordered using ``Pdf.pages``.
@@ -402,8 +396,7 @@ class Extend_Pdf:
         return Page(page_obj)
 
     def close(self) -> None:
-        """
-        Close a ``Pdf`` object and release resources acquired by pikepdf.
+        """Close a ``Pdf`` object and release resources acquired by pikepdf.
 
         If pikepdf opened the file handle it will close it (e.g. when opened with a file
         path). If the caller opened the file for pikepdf, the caller close the file.
@@ -414,9 +407,9 @@ class Extend_Pdf:
         case for :class:`pikepdf.Stream` but can be true for any object. Do not close
         the `Pdf` object if you might still be accessing content from it.
 
-        When an ``Object`` is copied from one ``Pdf`` to another, the ``Object`` is copied into
-        the destination ``Pdf`` immediately, so after accessing all desired information
-        from the source ``Pdf`` it may be closed.
+        When an ``Object`` is copied from one ``Pdf`` to another, the ``Object`` is
+        copied into the destination ``Pdf`` immediately, so after accessing all desired
+        information from the source ``Pdf`` it may be closed.
 
         .. versionchanged:: 3.0
             In pikepdf 2.x, this function actually worked by resetting to a very short
@@ -434,8 +427,7 @@ class Extend_Pdf:
 
     @property
     def allow(self) -> Permissions:
-        """
-        Report permissions associated with this PDF.
+        """Report permissions associated with this PDF.
 
         By default these permissions will be replicated when the PDF is
         saved. Permissions may also only be changed when a PDF is being saved,
@@ -451,18 +443,39 @@ class Extend_Pdf:
 
     @property
     def encryption(self) -> EncryptionInfo:
-        """
-        Report encryption information for this PDF.
+        """Report encryption information for this PDF.
 
         Encryption settings may only be changed when a PDF is saved.
         """
         return EncryptionInfo(self._encryption_data)
 
     def check(self) -> list[str]:
-        """
-        Check if PDF is well-formed.
+        """Check if PDF is syntactically well-formed.
 
-        Similar to ``qpdf --check``.
+        Similar to ``qpdf --check``, checks for syntax
+        or structural problems in the PDF. This is mainly useful to PDF
+        developers and may not be informative to the average user. PDFs with
+        these problems still render correctly, if PDF viewers are capable of
+        working around the issues they contain. In many cases, pikepdf can
+        also fix the problems.
+
+        An example problem found by this function is a xref table that is
+        missing an object reference. A page dictionary with the wrong type of
+        key, such as a string instead of an array of integers for its mediabox,
+        is not the sort of issue checked for. If this were an XML checker, it
+        would tell you if the XML is well-formed, but could not tell you if
+        the XML is valid XHTML or if it can be rendered as a usable web page.
+
+        This function also attempts to decompress all streams in the PDF.
+        If no JBIG2 decoder is available and JBIG2 images are presented,
+        a warning will occur that JBIG2 cannot be checked.
+
+        This function returns a list of strings describing the issues. The
+        text is subject to change and should not be treated as a stable API.
+
+        Returns:
+            Empty list if no issues were found. List of issues as text strings
+            if issues were found.
         """
 
         class DiscardingParser(StreamParser):
@@ -508,8 +521,7 @@ class Extend_Pdf:
         recompress_flate: bool = False,
         deterministic_id: bool = False,
     ) -> None:
-        """
-        Save all modifications to this :class:`pikepdf.Pdf`.
+        """Save all modifications to this :class:`pikepdf.Pdf`.
 
         Args:
             filename_or_stream: Where to write the output. If a file
@@ -555,14 +567,33 @@ class Extend_Pdf:
                 creating the smallest files but requiring PDF 1.5+.
 
             compress_streams: Enables or disables the compression of
-                stream objects in the PDF that are created without specifying
-                any compression setting. Metadata is never compressed.
-                By default this is set to ``True``, and should be except
-                for debugging. Existing streams in the PDF or streams will not
-                be modified. To decompress existing streams, you must set
+                uncompressed stream objects. By default this is set to
+                ``True``, and the only reason to set it to ``False`` is for
+                debugging or inspecting PDF contents.
+
+                When enabled, uncompressed stream objects will be compressed
+                whether they were uncompressed in the PDF when it was opened,
+                or when the user creates new :class:`pikepdf.Stream` objects
+                attached to the PDF. Stream objects can also be created
+                indirectly, such as when content from another PDF is merged
+                into the one being saved.
+
+                Only stream objects that have no compression will be
+                compressed when this object is set. If the object is
+                compressed, compression will be preserved.
+
+                Setting compress_streams=False does not trigger decompression
+                unless decompression is specifically requested by setting
                 both ``compress_streams=False`` and ``stream_decode_level``
                 to the desired decode level (e.g. ``.generalized`` will
                 decompress most non-image content).
+
+                This option does not trigger recompression of existing
+                compressed streams. For that, use ``recompress_flate``.
+
+                The XMP metadata stream object, if present, is never
+                compressed, to facilitate metadata reading by parsers that
+                don't understand the full structure of PDF.
 
             stream_decode_level: Specifies how
                 to encode stream objects. See documentation for
@@ -683,8 +714,7 @@ class Extend_Pdf:
         access_mode: AccessMode = AccessMode.default,
         allow_overwriting_input: bool = False,
     ) -> Pdf:
-        """
-        Open an existing file at *filename_or_stream*.
+        """Open an existing file at *filename_or_stream*.
 
         If *filename_or_stream* is path-like, the file will be opened for reading.
         The file should not be modified by another process while it is open in
@@ -823,6 +853,18 @@ class Extend_ObjectMapping:
         except KeyError:
             return default
 
+    @augment_override_cpp
+    def __contains__(self, key: Name | str) -> bool:
+        if isinstance(key, Name):
+            key = str(key)
+        return _ObjectMapping._cpp__contains__(self, key)
+
+    @augment_override_cpp
+    def __getitem__(self, key: Name | str) -> Object:
+        if isinstance(key, Name):
+            key = str(key)
+        return _ObjectMapping._cpp__getitem__(self, key)
+
 
 def check_is_box(obj) -> None:
     try:
@@ -884,15 +926,35 @@ class Extend_Page:
     def images(self) -> _ObjectMapping:
         """Return all regular images associated with this page.
 
-        This method does not recurse into Form XObjects and does not
-        attempt to find inline images.
+        This method does not search for Form XObjects that contain images,
+        and does not attempt to find inline images.
         """
         return self._images
 
     @property
+    def form_xobjects(self) -> _ObjectMapping:
+        """Return all Form XObjects associated with this page.
+
+        This method does not recurse into nested Form XObjects.
+
+        .. versionadded:: 7.0.0
+        """
+        return self._form_xobjects
+
+    @property
     def resources(self) -> Dictionary:
-        """Return this page's resources dictionary."""
-        return self.obj['/Resources']
+        """Return this page's resources dictionary.
+
+        .. versionchanged:: 7.0.0
+            If the resources dictionary does not exist, an empty one will be created.
+            A TypeError is raised if a page has a /Resources key but it is not a
+            dictionary.
+        """
+        if Name.Resources not in self.obj:
+            self.obj.Resources = Dictionary()
+        elif not isinstance(self.obj.Resources, Dictionary):
+            raise TypeError("Page /Resources exists but is not a dictionary")
+        return self.obj.Resources
 
     def add_resource(
         self,
@@ -935,12 +997,7 @@ class Extend_Page:
             Returns the name of the overlay in the resources dictionary instead
             of returning None.
         """
-        if Name.Resources not in self.obj:
-            self.obj.Resources = Dictionary()
-        elif not isinstance(self.obj.Resources, Dictionary):
-            raise TypeError("Page /Resources exists but is not a dictionary")
-        resources = self.obj.Resources
-
+        resources = self.resources
         if res_type not in resources:
             resources[res_type] = Dictionary()
 
@@ -1214,7 +1271,7 @@ class Extend_Attachments(MutableMapping):
         yield from self._get_all_filespecs()
 
     def __repr__(self):
-        return f"<pikepdf._qpdf.Attachments with {len(self)} attached files>"
+        return f"<pikepdf._core.Attachments with {len(self)} attached files>"
 
 
 @augments(AttachedFileSpec)
@@ -1257,10 +1314,10 @@ class Extend_AttachedFileSpec:
     def __repr__(self):
         if self.filename:
             return (
-                f"<pikepdf._qpdf.AttachedFileSpec for {self.filename!r}, "
+                f"<pikepdf._core.AttachedFileSpec for {self.filename!r}, "
                 f"description {self.description!r}>"
             )
-        return f"<pikepdf._qpdf.AttachedFileSpec description {self.description!r}>"
+        return f"<pikepdf._core.AttachedFileSpec description {self.description!r}>"
 
 
 @augments(AttachedFile)
@@ -1290,7 +1347,7 @@ class Extend_AttachedFile:
 
     def __repr__(self):
         return (
-            f'<pikepdf._qpdf.AttachedFile objid={self.obj.objgen} size={self.size} '
+            f'<pikepdf._core.AttachedFile objid={self.obj.objgen} size={self.size} '
             f'mime_type={self.mime_type} creation_date={self.creation_date} '
             f'mod_date={self.mod_date}>'
         )

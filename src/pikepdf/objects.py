@@ -21,15 +21,14 @@ from __future__ import annotations
 # pylint: disable=unused-import, abstract-method
 from secrets import token_urlsafe
 from typing import TYPE_CHECKING, Any, Iterable, Mapping, cast
-from warnings import warn
 
-from . import _qpdf
-from ._qpdf import Object, ObjectType, Rectangle
+from . import _core
+from ._core import Object, ObjectType, Rectangle
 
 if TYPE_CHECKING:  # pragma: no cover
     from pikepdf import Pdf
 
-# By default pikepdf.Object will identify itself as pikepdf._qpdf.Object
+# By default pikepdf.Object will identify itself as pikepdf._core.Object
 # Here we change the module to discourage people from using that internal name
 # Instead it will become pikepdf.objects.Object
 Object.__module__ = __name__
@@ -103,7 +102,7 @@ class Name(Object, metaclass=_NameObjectMeta):
             raise TypeError("Name should be str")
         if isinstance(name, Name):
             return name  # Names are immutable so we can return a reference
-        return _qpdf._new_name(name)
+        return _core._new_name(name)
 
     @classmethod
     def random(cls, len_: int = 16, prefix: str = '') -> Name:
@@ -122,7 +121,7 @@ class Name(Object, metaclass=_NameObjectMeta):
         The length of the string may vary because it is encoded.
         """
         random_string = token_urlsafe(len_)
-        return _qpdf._new_name(f"/{prefix}{random_string}")
+        return _core._new_name(f"/{prefix}{random_string}")
 
 
 class Operator(Object, metaclass=_ObjectMeta):
@@ -142,7 +141,7 @@ class Operator(Object, metaclass=_ObjectMeta):
 
     def __new__(cls, name: str) -> Operator:
         """Construct an operator."""
-        return cast('Operator', _qpdf._new_operator(name))
+        return cast('Operator', _core._new_operator(name))
 
 
 class String(Object, metaclass=_ObjectMeta):
@@ -151,8 +150,7 @@ class String(Object, metaclass=_ObjectMeta):
     object_type = ObjectType.string
 
     def __new__(cls, s: str | bytes) -> String:
-        """
-        Construct a PDF String.
+        """Construct a PDF String.
 
         Args:
             s: The string to use. String will be encoded for
@@ -162,8 +160,8 @@ class String(Object, metaclass=_ObjectMeta):
             pikepdf.Object
         """
         if isinstance(s, bytes):
-            return _qpdf._new_string(s)
-        return _qpdf._new_string_utf8(s)
+            return _core._new_string(s)
+        return _core._new_string_utf8(s)
 
 
 class Array(Object, metaclass=_ObjectMeta):
@@ -172,8 +170,7 @@ class Array(Object, metaclass=_ObjectMeta):
     object_type = ObjectType.array
 
     def __new__(cls, a: Iterable | Rectangle | None = None) -> Array:
-        """
-        Construct a PDF Array.
+        """Construct a PDF Array.
 
         Args:
             a: An iterable of objects. All objects must be either
@@ -191,7 +188,7 @@ class Array(Object, metaclass=_ObjectMeta):
             return a.as_array()
         elif isinstance(a, Array):
             return cast(Array, a.__copy__())
-        return _qpdf._new_array(a)
+        return _core._new_array(a)
 
 
 class Dictionary(Object, metaclass=_ObjectMeta):
@@ -200,8 +197,7 @@ class Dictionary(Object, metaclass=_ObjectMeta):
     object_type = ObjectType.dictionary
 
     def __new__(cls, d: Mapping | None = None, **kwargs) -> Dictionary:
-        """
-        Construct a PDF Dictionary.
+        """Construct a PDF Dictionary.
 
         Works from either a Python ``dict`` or keyword arguments.
 
@@ -225,7 +221,7 @@ class Dictionary(Object, metaclass=_ObjectMeta):
         if kwargs:
             # Add leading slash
             # Allows Dictionary(MediaBox=(0,0,1,1), Type=Name('/Page')...
-            return _qpdf._new_dictionary({('/' + k): v for k, v in kwargs.items()})
+            return _core._new_dictionary({('/' + k): v for k, v in kwargs.items()})
         if isinstance(d, Dictionary):
             # Already a dictionary
             return d.__copy__()
@@ -233,7 +229,7 @@ class Dictionary(Object, metaclass=_ObjectMeta):
             d = {}
         if d and any(key == '/' or not key.startswith('/') for key in d.keys()):
             raise KeyError("Dictionary created from strings must begin with '/'")
-        return _qpdf._new_dictionary(d)
+        return _core._new_dictionary(d)
 
 
 class Stream(Object, metaclass=_ObjectMeta):
@@ -242,8 +238,7 @@ class Stream(Object, metaclass=_ObjectMeta):
     object_type = ObjectType.stream
 
     def __new__(cls, owner: Pdf, data: bytes | None = None, d=None, **kwargs) -> Stream:
-        """
-        Create a new stream object.
+        """Create a new stream object.
 
         Streams stores arbitrary binary data and may or may not be compressed.
         It also may or may not be a page or Form XObject's content stream.
@@ -294,7 +289,7 @@ class Stream(Object, metaclass=_ObjectMeta):
         if d or kwargs:
             stream_dict = Dictionary(d, **kwargs)
 
-        stream = _qpdf._new_stream(owner, data)
+        stream = _core._new_stream(owner, data)
         if stream_dict:
             stream.stream_dict = stream_dict
         return stream

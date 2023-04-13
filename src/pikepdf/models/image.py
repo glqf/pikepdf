@@ -6,12 +6,13 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from copy import copy
 from decimal import Decimal
 from io import BytesIO
 from itertools import zip_longest
 from pathlib import Path
 from shutil import copyfileobj
-from typing import Any, BinaryIO, Callable, NamedTuple, Sequence, TypeVar, cast
+from typing import Any, BinaryIO, Callable, NamedTuple, TypeVar, cast
 
 from PIL import Image
 from PIL.ImageCms import ImageCmsProfile
@@ -28,9 +29,8 @@ from pikepdf import (
     String,
     jbig2,
 )
+from pikepdf._core import Buffer
 from pikepdf._exceptions import DependencyError
-from pikepdf._qpdf import Buffer
-from pikepdf._version import __version__
 from pikepdf.models import _transcoding
 
 T = TypeVar('T')
@@ -53,7 +53,7 @@ class InvalidPdfImageError(Exception):
 
 
 def _array_str(value: Object | str | list):
-    """Simplify pikepdf objects to array of str. Keep Streams and dictionaries intact."""
+    """Simplify pikepdf objects to array of str. Keep streams, dictionaries intact."""
 
     def _convert(item):
         if isinstance(item, (list, Array)):
@@ -72,7 +72,7 @@ def _array_str(value: Object | str | list):
     return result
 
 
-def _ensure_list(value: list[Object] | Dictionary | Array) -> list[Object]:
+def _ensure_list(value: list[Object] | Dictionary | Array | Object) -> list[Object]:
     """Ensure value is a list of pikepdf.Object, if it was not already.
 
     To support DecodeParms which can be present as either an array of dicts or a single
@@ -86,7 +86,7 @@ def _ensure_list(value: list[Object] | Dictionary | Array) -> list[Object]:
 def _metadata_from_obj(
     obj: Dictionary | Stream, name: str, type_: Callable[[Any], T], default: T
 ) -> T | None:
-    """Retrieve metadata from a dictionary or stream, and ensure it is the expected type."""
+    """Retrieve metadata from a dictionary or stream and wrangle types."""
     val = getattr(obj, name, default)
     try:
         return type_(val)
@@ -322,46 +322,6 @@ class PdfImageBase(ABC):
     def as_pil_image(self) -> Image.Image:
         """Convert this PDF image to a Python PIL (Pillow) image."""
 
-    @staticmethod
-    def _remove_simple_filters(obj: Stream, filters: Sequence[str]):
-        """Remove simple lossless compression where it appears.
-
-        Args:
-            obj: the compressed object
-            filters: all files on the data
-        """
-        COMPLEX_FILTERS = {
-            '/DCTDecode',
-            '/JPXDecode',
-            '/JBIG2Decode',
-            '/CCITTFaxDecode',
-        }
-
-        idx = [n for n, item in enumerate(filters) if item in COMPLEX_FILTERS]
-        if idx:
-            if len(idx) > 1:
-                raise NotImplementedError(
-                    f"Object {obj.objgen} has compound complex filters: {filters}. "
-                    "We cannot decompress this."
-                )
-            simple_filters = filters[: idx[0]]
-            complex_filters = filters[idx[0] :]
-        else:
-            simple_filters = filters
-            complex_filters = []
-
-        if not simple_filters:
-            return obj.read_raw_bytes(), complex_filters
-
-        original_filters = obj.Filter
-        try:
-            obj.Filter = Array([Name(s) for s in simple_filters])
-            data = obj.read_bytes(StreamDecodeLevel.specialized)
-        finally:
-            obj.Filter = original_filters
-
-        return data, complex_filters
-
 
 class PdfImage(PdfImageBase):
     """Support class to provide a consistent API for manipulating PDF images.
@@ -375,15 +335,19 @@ class PdfImage(PdfImageBase):
 
     obj: Stream
     _icc: ImageCmsProfile | None
+    _pdf_source: Pdf | None
 
-    def __new__(cls, obj):
+    def __new__(cls, obj: Stream):
         """Construct a PdfImage... or a PdfJpxImage if that is what we really are."""
-        instance = super().__new__(cls)
-        instance.__init__(obj)
-        if '/JPXDecode' in instance.filters:
-            instance = super().__new__(PdfJpxImage)
-            instance.__init__(obj)
-        return instance
+        try:
+            # Check if JPXDecode is called for and initialize as PdfJpxImage
+            filters = _ensure_list(obj.Filter)
+            if Name.JPXDecode in filters:
+                return super().__new__(PdfJpxImage)
+        except (AttributeError, KeyError):
+            # __init__ will deal with any other errors
+            pass
+        return super().__new__(PdfImage)
 
     def __init__(self, obj: Stream):
         """Construct a PDF image from a Image XObject inside a PDF.
@@ -464,6 +428,34 @@ class PdfImage(PdfImageBase):
                     ) from e
         return self._icc
 
+    def _remove_simple_filters(self):
+        """Remove simple lossless compression where it appears."""
+        COMPLEX_FILTERS = {
+            '/DCTDecode',
+            '/JPXDecode',
+            '/JBIG2Decode',
+            '/CCITTFaxDecode',
+        }
+        indices = [n for n, filt in enumerate(self.filters) if filt in COMPLEX_FILTERS]
+        if len(indices) > 1:
+            raise NotImplementedError(
+                f"Object {self.obj.objgen} has compound complex filters: "
+                f"{self.filters}. We cannot decompress this."
+            )
+        if len(indices) == 0:
+            # No complex filter indices, so all filters are simple - remove them all
+            return self.obj.read_bytes(StreamDecodeLevel.specialized), []
+
+        n = indices[0]
+        if n == 0:
+            # The only filter is complex, so return
+            return self.obj.read_raw_bytes(), self.filters
+
+        obj_copy = copy(self.obj)
+        obj_copy.Filter = Array([Name(f) for f in self.filters[:n]])
+        obj_copy.DecodeParms = Array(self.decode_parms[:n])
+        return obj_copy.read_bytes(StreamDecodeLevel.specialized), self.filters[n:]
+
     def _extract_direct(self, *, stream: BinaryIO) -> str:
         """Attempt to extract the image directly to a usable image file.
 
@@ -482,17 +474,25 @@ class PdfImage(PdfImageBase):
             # be saved as JPEGs, and are probably bugs. Some software in the
             # wild actually produces RGB JPEGs in PDFs (probably a bug).
             DEFAULT_CT_RGB = 1
-            ct = self.filter_decodeparms[0][1].get('/ColorTransform', DEFAULT_CT_RGB)
+            ct = DEFAULT_CT_RGB
+            if self.filter_decodeparms[0][1] is not None:
+                ct = self.filter_decodeparms[0][1].get(
+                    '/ColorTransform', DEFAULT_CT_RGB
+                )
             return self.mode == 'RGB' and ct == DEFAULT_CT_RGB
 
         def normal_dct_cmyk() -> bool:
             # Normal DCTDecode CMYKs have /ColorTransform 0 and can be saved.
             # There is a YUVK colorspace but CMYK JPEGs don't generally use it
             DEFAULT_CT_CMYK = 0
-            ct = self.filter_decodeparms[0][1].get('/ColorTransform', DEFAULT_CT_CMYK)
+            ct = DEFAULT_CT_CMYK
+            if self.filter_decodeparms[0][1] is not None:
+                ct = self.filter_decodeparms[0][1].get(
+                    '/ColorTransform', DEFAULT_CT_CMYK
+                )
             return self.mode == 'CMYK' and ct == DEFAULT_CT_CMYK
 
-        data, filters = self._remove_simple_filters(self.obj, self.filters)
+        data, filters = self._remove_simple_filters()
 
         if filters == ['/CCITTFaxDecode']:
             if self.colorspace == '/ICCBased':
@@ -710,18 +710,27 @@ class PdfImage(PdfImageBase):
 
         if not self.decode_parms:
             raise ValueError("/CCITTFaxDecode without /DecodeParms")
-        if self.decode_parms[0].get("/EncodedByteAlign", False):
-            raise UnsupportedImageTypeError(
-                "/CCITTFaxDecode with /EncodedByteAlign true"
-            )
+
+        expected_defaults = [
+            ("/EncodedByteAlign", False),
+            ("/EndOfLine", False),
+            ("/EndOfBlock", True),
+        ]
+        for name, val in expected_defaults:
+            if self.decode_parms[0].get(name, val) != val:
+                raise UnsupportedImageTypeError(
+                    f"/CCITTFaxDecode with decode parameter {name} not equal {val}"
+                )
 
         k = self.decode_parms[0].get("/K", 0)
+        t4_options = None
         if k < 0:
-            ccitt_group = 4  # Pure two-dimensional encoding (Group 4)
+            ccitt_group = 4  # Group 4
         elif k > 0:
             ccitt_group = 3  # Group 3 2-D
+            t4_options = 1
         else:
-            ccitt_group = 2  # Group 3 1-D
+            ccitt_group = 3  # Group 3 1-D
         _black_is_one = self.decode_parms[0].get("/BlackIs1", False)
         # PDF spec says:
         # BlackIs1: A flag indicating whether 1 bits shall be interpreted as black
@@ -740,12 +749,15 @@ class PdfImage(PdfImageBase):
         if icc is None:
             icc = b''
         return _transcoding.generate_ccitt_header(
-            self.size, img_size, ccitt_group, photometry, icc
+            self.size, img_size, ccitt_group, t4_options, photometry, icc
         )
 
     def show(self):  # pragma: no cover
         """Show the image however PIL wants to."""
         self.as_pil_image().show()
+
+    def _set_pdf_source(self, pdf: Pdf):
+        self._pdf_source = pdf
 
     def __repr__(self):
         return (
@@ -783,7 +795,7 @@ class PdfJpxImage(PdfImage):
         )
 
     def _extract_direct(self, *, stream: BinaryIO):
-        data, filters = self._remove_simple_filters(self.obj, self.filters)
+        data, filters = self._remove_simple_filters()
         if filters != ['/JPXDecode']:
             raise UnsupportedImageTypeError(self.filters)
         stream.write(data)
@@ -832,7 +844,7 @@ class PdfJpxImage(PdfImage):
 
 
 class PdfInlineImage(PdfImageBase):
-    """Support class for PDF inline images. Implements the same API as :class:`PdfImage`."""
+    """Support class for PDF inline images."""
 
     # Inline images can contain abbreviations that we write automatically
     ABBREVS = {
@@ -949,7 +961,7 @@ class PdfInlineImage(PdfImageBase):
             f'size={self.width}x{self.height} at {hex(id(self))}>'
         )
 
-    def _convert_to_pdfimage(self):
+    def _convert_to_pdfimage(self) -> PdfImage:
         # Construct a temporary PDF that holds this inline image, and...
         tmppdf = Pdf.new()
         tmppdf.add_blank_page(page_size=(self.width, self.height))
@@ -964,6 +976,7 @@ class PdfInlineImage(PdfImageBase):
 
         # ...then use the regular PdfImage API to extract it.
         img = PdfImage(raw_img)
+        img._set_pdf_source(tmppdf)  # Hold tmppdf open while PdfImage exists
         return img
 
     def as_pil_image(self) -> Image.Image:

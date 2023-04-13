@@ -4,14 +4,14 @@
 from __future__ import annotations
 
 import pytest
-from conftest import needs_libqpdf_v
 
-from pikepdf import Annotation, Dictionary, Name, Pdf
+from pikepdf import Annotation, Name, Pdf
 
 
 @pytest.fixture
 def form(resources):
-    yield Pdf.open(resources / 'form.pdf')
+    with Pdf.open(resources / 'form.pdf') as pdf:
+        yield pdf
 
 
 def test_button(form):

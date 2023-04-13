@@ -5,21 +5,14 @@
 
 from __future__ import annotations
 
-import sys
-from typing import TYPE_CHECKING, Any, NamedTuple, cast
-
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal  # pragma: no cover
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple, cast
 
 if TYPE_CHECKING:
-    from pikepdf._qpdf import EncryptionMethod
+    from pikepdf._core import EncryptionMethod
 
 
 class Permissions(NamedTuple):
-    """
-    Stores the user-level permissions for an encrypted PDF.
+    """Stores the user-level permissions for an encrypted PDF.
 
     A compliant PDF reader/writer should enforce these restrictions on people
     who have the user password and not the owner password. In practice, either
@@ -61,8 +54,7 @@ DEFAULT_PERMISSIONS = Permissions()
 
 
 class EncryptionInfo:
-    """
-    Reports encryption information for an encrypted PDF.
+    """Reports encryption information for an encrypted PDF.
 
     This information may not be changed, except when a PDF is saved.
     This object is not used to specify the encryption settings to save
@@ -70,8 +62,7 @@ class EncryptionInfo:
     """
 
     def __init__(self, encdict: dict[str, Any]):
-        """
-        Initialize EncryptionInfo.
+        """Initialize EncryptionInfo.
 
         Generally pikepdf will initialize and return it.
 
